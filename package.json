@@ -1,0 +1,54 @@
+{
+  "name": "dsh-tinyfish-websearch",
+  "version": "0.1.0",
+  "description": "dsh bundle plugin: replaces the default web_search provider with TinyFish (ctx.web seam), with a Settings → TinyFish 搜索 key form",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "INSTALL.md"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lijq3370/dsh-tinyfish-websearch.git"
+  },
+  "homepage": "https://github.com/lijq3370/dsh-tinyfish-websearch",
+  "bugs": {
+    "url": "https://github.com/lijq3370/dsh-tinyfish-websearch/issues"
+  },
+  "author": {
+    "name": "lijq3370",
+    "url": "https://github.com/lijq3370"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "web-search",
+    "tinyfish",
+    "search"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# dsh-tinyfish-websearch bundle patch: installing this package registers the
+# TinyFish search provider AND makes it the active search provider (replacing
+# the DSH default, which the base bundle sets to deepseek-official).
+#
+# A patch replaces the targeted row's whole `config`, so the `web` row below
+# restates every key it owns (searchProvider). The base bundle inserts the
+# `web` row with `searchProvider: deepseek-official`; this layer overrides it.
+# A deployment that wants a different provider overrides searchProvider in its
+# own cordis.patch.yml (applied after bundle layers).
+- insert:
+    - id: tinyfish-websearch
+      name: dsh-tinyfish-websearch
+      config:
+        maxResults: 5
+
+- id: web
+  config:
+    searchProvider: tinyfish
