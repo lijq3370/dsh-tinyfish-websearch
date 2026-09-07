@@ -212,7 +212,7 @@ window.__ModuleLoader__.load({
           });
         };
 
-        fetch('/api/tinyfish/test', {
+        fetch('/tinyfish/test', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ apiKey: keyToTest || undefined })

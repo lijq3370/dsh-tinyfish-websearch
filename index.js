@@ -227,7 +227,7 @@ export function apply(ctx, rawConfig) {
     httpCtx.effect(() => {
       return httpCtx.webServer.register({
         kind: 'exact',
-        path: '/api/tinyfish/test',
+        path: '/tinyfish/test',
         handler: async (req, res) => {
           if (req.method !== 'POST' && req.method !== 'GET') {
             res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
