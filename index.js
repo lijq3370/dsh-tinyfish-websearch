@@ -221,4 +221,113 @@ export function apply(ctx, rawConfig) {
     baseURL: config.baseURL,
     maxResults: config.maxResults,
   }))
+
+  // Register an HTTP test endpoint when webServer is available (browser UI test button)
+  ctx.inject(['webServer'], (httpCtx) => {
+    httpCtx.effect(() => {
+      return httpCtx.webServer.register({
+        kind: 'exact',
+        path: '/api/tinyfish/test',
+        handler: async (req, res) => {
+          if (req.method !== 'POST' && req.method !== 'GET') {
+            res.writeHead(405, { 'content-type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, error: 'Method not allowed' }))
+            return
+          }
+
+          let body = ''
+          req.on('data', (chunk) => {
+            body += chunk
+            if (body.length > 65536) req.destroy()
+          })
+
+          req.on('end', async () => {
+            let candidateKey = ''
+            if (body) {
+              try {
+                const parsed = JSON.parse(body)
+                if (typeof parsed.apiKey === 'string' && parsed.apiKey.trim()) {
+                  candidateKey = parsed.apiKey.trim()
+                }
+              } catch {}
+            }
+
+            if (!candidateKey) {
+              if (config.apiKey) {
+                candidateKey = config.apiKey
+              } else {
+                const cred = await ctx.credentials.resolve('TINYFISH_API_KEY')
+                if (cred && cred.value) {
+                  candidateKey = cred.value
+                }
+              }
+            }
+
+            if (!candidateKey) {
+              res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+              res.end(JSON.stringify({
+                ok: false,
+                error: '未检测到 API Key，请先输入或保存 Key',
+              }))
+              return
+            }
+
+            const start = Date.now()
+            const testUrl = new URL(config.baseURL)
+            testUrl.searchParams.set('query', 'test')
+            try {
+              const response = await fetch(testUrl, {
+                method: 'GET',
+                redirect: 'error',
+                headers: {
+                  'x-api-key': candidateKey,
+                  'accept': 'application/json',
+                  'user-agent': USER_AGENT,
+                },
+              })
+              const latencyMs = Date.now() - start
+
+              if (response.ok) {
+                let resultCount = 0
+                try {
+                  const data = await response.json()
+                  if (Array.isArray(data?.results)) {
+                    resultCount = data.results.length
+                  }
+                } catch {}
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+                res.end(JSON.stringify({
+                  ok: true,
+                  latencyMs,
+                  count: resultCount,
+                  message: `测试成功！TinyFish 搜索正常响应 (${latencyMs}ms，返回 ${resultCount} 条结果)`,
+                }))
+              } else {
+                let detail = `HTTP ${response.status}`
+                try {
+                  const data = await response.json()
+                  detail = data?.detail?.error ?? data?.error?.message ?? data?.detail ?? data?.message ?? detail
+                } catch {}
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+                res.end(JSON.stringify({
+                  ok: false,
+                  status: response.status,
+                  latencyMs,
+                  error: `TinyFish API 错误 (${response.status}): ${detail}`,
+                }))
+              }
+            } catch (err) {
+              const latencyMs = Date.now() - start
+              res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+              res.end(JSON.stringify({
+                ok: false,
+                latencyMs,
+                error: `连接 TinyFish 失败: ${err.message || String(err)}`,
+              }))
+            }
+          })
+        },
+      })
+    }, 'tinyfish-websearch: test endpoint')
+  })
 }

@@ -10,20 +10,22 @@
  *
  * Contribution: one `settings.section` entry — 「TinyFish 搜索」— with a form
  * that writes the TinyFish API key through the credentials RPC
- * (`api.credentials.set`), which lands in `$DSH_HOME/.credentials.yaml`.
+ * (`ctx.remote.credentials.set`), which lands in `$DSH_HOME/.credentials.yaml`.
  * The host half resolves the key per search through the credentials seam,
  * so a key saved here takes effect on the next search without a restart.
  */
-var module = { exports: {} };
-var exports = module.exports;
 window.__ModuleLoader__.load({
   id: 'dsh-tinyfish-websearch',
   factory: function (require) {
     'use strict';
+    var module = { exports: {} };
+    var exports = module.exports;
+    Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+
     var React = require('react');
 
     var NS = 'settings.tinyfish';
-    var inject = ['slots', 'locale', 'connection'];
+    var inject = ['slots', 'locale', 'remote', 'remote.credentials'];
     var REF = 'TINYFISH_API_KEY';
 
     var zh = {
@@ -37,6 +39,8 @@ window.__ModuleLoader__.load({
       keyPlaceholder: 'TinyFish API Key',
       save: '保存',
       clear: '清除',
+      test: '测试',
+      testing: '测试中…',
       saved: '已保存，下次搜索立即生效。',
       cleared: '已清除。',
       retry: '重试',
@@ -53,6 +57,8 @@ window.__ModuleLoader__.load({
       keyPlaceholder: 'TinyFish API Key',
       save: 'Save',
       clear: 'Clear',
+      test: 'Test',
+      testing: 'Testing…',
       saved: 'Saved; the next search picks it up immediately.',
       cleared: 'Cleared.',
       retry: 'Retry',
@@ -81,74 +87,151 @@ window.__ModuleLoader__.load({
 
     /** One settings entry rendering the key form over the credentials RPC. */
     function SettingsPanel(props) {
-      var api = props.api;
-      var t = props.t;
+      var describeCredential = props.describeCredential;
+      var storeCredential = props.storeCredential;
+      var removeCredential = props.removeCredential;
+      var t = typeof props.t === 'function' ? props.t : function (k) { return zh[k] || k; };
+
       var viewPair = React.useState(null);
       var view = viewPair[0];
       var setView = viewPair[1];
+
       var statusPair = React.useState('loading');
       var status = statusPair[0];
       var setStatus = statusPair[1];
+
       var errorPair = React.useState(null);
       var error = errorPair[0];
       var setError = errorPair[1];
+
       var valuePair = React.useState('');
       var value = valuePair[0];
       var setValue = valuePair[1];
+
       var busyPair = React.useState(false);
       var busy = busyPair[0];
       var setBusy = busyPair[1];
+
+      var testingPair = React.useState(false);
+      var testing = testingPair[0];
+      var setTesting = testingPair[1];
+
       var noticePair = React.useState(null);
       var notice = noticePair[0];
       var setNotice = noticePair[1];
 
       var refresh = React.useCallback(function () {
-        api.credentials.describe({ refs: [REF] }).then(function (res) {
-          if (res.result.ok) {
-            setView(res.result.value.credentials[REF]);
+        if (typeof describeCredential !== 'function') {
+          setStatus('ready');
+          return;
+        }
+        describeCredential(REF).then(function (res) {
+          if (res && res.ok) {
+            setView(res.value ? res.value[REF] : null);
             setStatus('ready');
             setError(null);
           } else {
             setStatus('failure');
-            setError(res.result.error.message);
+            setError((res && res.error && res.error.message) || 'Failed to query credential status');
           }
         }).catch(function (e) {
           setStatus('failure');
           setError(String((e && e.message) || e));
         });
-      }, [api, setView, setStatus, setError]);
+      }, [describeCredential, setView, setStatus, setError]);
 
-      React.useEffect(function () { refresh(); }, [refresh]);
+      React.useEffect(function () {
+        refresh();
+      }, [refresh]);
 
       var save = function () {
-        if (value.length === 0 || busy) return;
+        if (value.length === 0 || busy || typeof storeCredential !== 'function') return;
         setBusy(true);
-        api.credentials.set({ ref: REF, value: value }).then(function (res) {
-          if (res.result.ok) {
+        storeCredential(REF, value).then(function (res) {
+          if (res && res.ok) {
             setNotice({ kind: 'ok', text: t('saved') });
             setValue('');
             refresh();
           } else {
-            setNotice({ kind: 'err', text: res.result.error.message });
+            setNotice({ kind: 'err', text: (res && res.error && res.error.message) || 'Failed to save credential' });
           }
         }).catch(function (e) {
           setNotice({ kind: 'err', text: String((e && e.message) || e) });
-        }).finally(function () { setBusy(false); });
+        }).finally(function () {
+          setBusy(false);
+        });
       };
 
       var clear = function () {
-        if (busy) return;
+        if (busy || testing || typeof removeCredential !== 'function') return;
         setBusy(true);
-        api.credentials.unset({ ref: REF }).then(function (res) {
-          if (res.result.ok) {
+        removeCredential(REF).then(function (res) {
+          if (res && res.ok) {
             setNotice({ kind: 'ok', text: t('cleared') });
             refresh();
           } else {
-            setNotice({ kind: 'err', text: res.result.error.message });
+            setNotice({ kind: 'err', text: (res && res.error && res.error.message) || 'Failed to clear credential' });
           }
         }).catch(function (e) {
           setNotice({ kind: 'err', text: String((e && e.message) || e) });
-        }).finally(function () { setBusy(false); });
+        }).finally(function () {
+          setBusy(false);
+        });
+      };
+
+      var test = function () {
+        if (busy || testing) return;
+        var keyToTest = value.trim();
+        if (!keyToTest && !configured) return;
+        setTesting(true);
+        setNotice(null);
+
+        var fallbackDirect = function () {
+          if (!keyToTest) {
+            setNotice({
+              kind: 'err',
+              text: '服务端测试接口未就绪，请在输入框填入待测试的 API Key 直接测试，或重启 dsh web。'
+            });
+            setTesting(false);
+            return;
+          }
+          var start = Date.now();
+          fetch('https://api.search.tinyfish.ai?query=test', {
+            headers: { 'x-api-key': keyToTest, 'accept': 'application/json' }
+          }).then(function (r) {
+            var ms = Date.now() - start;
+            if (r.ok) {
+              setNotice({ kind: 'ok', text: '测试成功！TinyFish 搜索连接正常 (' + ms + 'ms)' });
+            } else {
+              setNotice({ kind: 'err', text: 'TinyFish 返回错误 (HTTP ' + r.status + ')' });
+            }
+          }).catch(function (e) {
+            setNotice({ kind: 'err', text: '连接 TinyFish 失败: ' + (e.message || String(e)) });
+          }).finally(function () {
+            setTesting(false);
+          });
+        };
+
+        fetch('/api/tinyfish/test', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ apiKey: keyToTest || undefined })
+        }).then(function (res) {
+          if (!res.ok) {
+            fallbackDirect();
+            return;
+          }
+          return res.json().then(function (data) {
+            setTesting(false);
+            if (data && data.ok) {
+              setNotice({ kind: 'ok', text: data.message || '测试成功！TinyFish API 连接正常' });
+            } else {
+              setNotice({ kind: 'err', text: (data && data.error) || '测试失败' });
+            }
+          });
+        }).catch(function () {
+          fallbackDirect();
+        });
       };
 
       if (status === 'loading') {
@@ -184,10 +267,15 @@ window.__ModuleLoader__.load({
               React.createElement('button', {
                 style: styles.button,
                 onClick: save,
-                disabled: busy || value.length === 0,
+                disabled: busy || testing || value.length === 0,
               }, t('save')),
+              React.createElement('button', {
+                style: styles.button,
+                onClick: test,
+                disabled: busy || testing || (!configured && value.length === 0),
+              }, testing ? t('testing') : t('test')),
               configured
-                ? React.createElement('button', { style: styles.button, onClick: clear, disabled: busy }, t('clear'))
+                ? React.createElement('button', { style: styles.button, onClick: clear, disabled: busy || testing }, t('clear'))
                 : null,
             ),
         notice
@@ -201,14 +289,42 @@ window.__ModuleLoader__.load({
      * @param ctx - the browser-side cordis context.
      */
     function apply(ctx) {
-      ctx.effect(function () { ctx.locale.register(NS, { zh: zh, en: en }); }, 'tinyfish-websearch: dictionaries');
+      ctx.effect(function () {
+        ctx.locale.register(NS, { zh: zh, en: en });
+      }, 'tinyfish-websearch: dictionaries');
       var t = ctx.locale.bind(NS);
+
+      var getRemote = function () {
+        return ctx.get('remote.credentials') || (ctx.remote && ctx.remote.credentials);
+      };
+
+      var describeCredential = function (ref) {
+        var remote = getRemote();
+        if (!remote) return Promise.resolve({ ok: false, error: { message: 'remote.credentials is unavailable' } });
+        return remote.describe([ref]);
+      };
+
+      var storeCredential = function (ref, val) {
+        var remote = getRemote();
+        if (!remote) return Promise.resolve({ ok: false, error: { message: 'remote.credentials is unavailable' } });
+        return remote.set(ref, val);
+      };
+
+      var removeCredential = function (ref) {
+        var remote = getRemote();
+        if (!remote) return Promise.resolve({ ok: false, error: { message: 'remote.credentials is unavailable' } });
+        return remote.unset(ref);
+      };
+
       var injected = function () {
         return {
-          api: ctx.get('connection').api,
+          describeCredential: describeCredential,
+          storeCredential: storeCredential,
+          removeCredential: removeCredential,
           t: t,
         };
       };
+
       ctx.slots.inject('settings.section', function () {
         return ctx.slots.register({
           name: 'settings.section',

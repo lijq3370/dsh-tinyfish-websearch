@@ -1,6 +1,6 @@
 {
   "name": "dsh-tinyfish-websearch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "dsh bundle plugin: replaces the default web_search provider with TinyFish (ctx.web seam), with a Settings → TinyFish 搜索 key form",
   "type": "module",
   "main": "index.js",
@@ -44,6 +44,7 @@
     },
     "client": {
       "inject": [
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-locale"
