@@ -1,6 +1,6 @@
 {
   "name": "dsh-tinyfish-websearch",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "dsh bundle plugin: replaces the default web_search provider with TinyFish (ctx.web seam), with a Settings → TinyFish 搜索 key form",
   "type": "module",
   "main": "index.js",
